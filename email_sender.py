@@ -9,7 +9,17 @@ import logging
 from typing import List, Dict
 from config import (
     EMAIL_SMTP_SERVER, EMAIL_SMTP_PORT, EMAIL_USERNAME, 
-    EMAIL_PASSWORD, MAILING_LIST, TUSTUS_URL
+    EMAIL_PASSWORD, MAILING_LIST, TUSTUS_URL, IGNORE_PRICE_CHANGES
+)
+
+# הגדרת לוגים
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('flight_monitor.log', encoding='utf-8'),
+        logging.StreamHandler()
+    ]
 )
 
 class EmailSender:
@@ -24,7 +34,7 @@ class EmailSender:
             logging.warning("לא הוגדרו נתוני מייל - שליחת מיילים לא תעבוד")
     
     def create_flights_html(self, flights: List[Dict], title: str) -> str:
-        """יצירת HTML לטיסות"""
+        """יצירת HTML לטיסות חדשות - מותאם לטיסות רגע אחרון"""
         if not flights:
             return ""
         
@@ -38,11 +48,19 @@ class EmailSender:
         
         for flight in flights:
             destination = flight.get('destination', 'לא זמין')
-            price = flight.get('price', 0)
+            price = flight.get('price', 'מחיר קבוע')
             dates = flight.get('dates', [])
             full_text = flight.get('full_text', '')[:200] + '...' if len(flight.get('full_text', '')) > 200 else flight.get('full_text', '')
             
-            dates_str = ', '.join(dates) if dates else 'תאריכים לא זמינים'
+            # עיצוב תאריכים
+            if dates:
+                dates_str = ', '.join(dates)
+                dates_display = f"📅 תאריכי יציאה: {dates_str}"
+            else:
+                dates_display = "📅 תאריכים יפורסמו בקרוב"
+            
+            # עיצוב מחיר
+            price_display = f"{price}₪" if isinstance(price, (int, float)) else "מחיר קבוע"
             
             html += f"""
                 <div style="
@@ -64,11 +82,14 @@ class EmailSender:
                             font-weight: bold;
                             font-size: 16px;
                         ">
-                            {price}₪
+                            🆕 חדש!
                         </span>
                     </div>
                     <div style="color: #6c757d; margin-bottom: 8px;">
-                        📅 תאריכים: {dates_str}
+                        {dates_display}
+                    </div>
+                    <div style="color: #6c757d; margin-bottom: 8px;">
+                        💰 מחיר: {price_display}
                     </div>
                     <div style="color: #6c757d; font-size: 14px; line-height: 1.4;">
                         {full_text}
@@ -79,64 +100,8 @@ class EmailSender:
         html += "</div></div>"
         return html
     
-    def create_price_changes_html(self, price_changes: List[Dict]) -> str:
-        """יצירת HTML לשינויי מחירים"""
-        if not price_changes:
-            return ""
-        
-        html = """
-        <div style="margin: 20px 0;">
-            <h2 style="color: #dc3545; border-bottom: 2px solid #dc3545; padding-bottom: 10px;">
-                🔥 ירידות מחיר
-            </h2>
-            <div style="display: grid; gap: 15px;">
-        """
-        
-        for change in price_changes:
-            destination = change.get('destination', 'לא זמין')
-            previous_price = change.get('previous_price', 0)
-            current_price = change.get('current_price', 0)
-            discount = change.get('discount', 0)
-            
-            html += f"""
-                <div style="
-                    border: 1px solid #dc3545; 
-                    border-radius: 8px; 
-                    padding: 15px; 
-                    background: linear-gradient(135deg, #fff5f5 0%, #fed7d7 100%);
-                    box-shadow: 0 2px 4px rgba(220,53,69,0.2);
-                ">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <h3 style="color: #721c24; margin: 0; font-size: 18px;">
-                            🎯 {destination}
-                        </h3>
-                        <div style="text-align: right;">
-                            <div style="color: #6c757d; text-decoration: line-through; font-size: 14px;">
-                                {previous_price}₪
-                            </div>
-                            <div style="
-                                background: #dc3545; 
-                                color: white; 
-                                padding: 5px 15px; 
-                                border-radius: 20px; 
-                                font-weight: bold;
-                                font-size: 16px;
-                            ">
-                                {current_price}₪
-                            </div>
-                        </div>
-                    </div>
-                    <div style="margin-top: 10px; color: #155724; font-weight: bold;">
-                        💰 חיסכון: {discount}₪
-                    </div>
-                </div>
-            """
-        
-        html += "</div></div>"
-        return html
-    
     def create_email_html(self, new_flights: List[Dict], price_changes: List[Dict], stats: Dict) -> str:
-        """יצירת תבנית HTML למייל"""
+        """יצירת תבנית HTML למייל - מותאמת לטיסות רגע אחרון"""
         current_time = datetime.now().strftime("%d/%m/%Y %H:%M")
         
         # התחלת HTML
@@ -146,7 +111,7 @@ class EmailSender:
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>עדכון טיסות</title>
+            <title>טיסות רגע אחרון חדשות</title>
         </head>
         <body style="
             font-family: Arial, Helvetica, sans-serif; 
@@ -171,10 +136,10 @@ class EmailSender:
                     text-align: center;
                 ">
                     <h1 style="margin: 0; font-size: 28px;">
-                        ✈️ עדכון טיסות TusTus
+                        ✈️ טיסות רגע אחרון חדשות!
                     </h1>
                     <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">
-                        {current_time}
+                        TusTus - {current_time}
                     </p>
                 </div>
                 
@@ -191,26 +156,24 @@ class EmailSender:
                         margin-bottom: 25px;
                         border-radius: 0 8px 8px 0;
                     ">
-                        <h3 style="color: #1976d2; margin: 0 0 10px 0;">📊 סיכום</h3>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                        <h3 style="color: #1976d2; margin: 0 0 10px 0;">🚨 התראה חדשה!</h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
                             <div style="text-align: center;">
-                                <div style="font-size: 24px; font-weight: bold; color: #2196f3;">
+                                <div style="font-size: 32px; font-weight: bold; color: #2196f3;">
                                     {len(new_flights)}
                                 </div>
-                                <div style="color: #666; font-size: 14px;">טיסות חדשות</div>
-                            </div>
-                            <div style="text-align: center;">
-                                <div style="font-size: 24px; font-weight: bold; color: #f44336;">
-                                    {len(price_changes)}
-                                </div>
-                                <div style="color: #666; font-size: 14px;">ירידות מחיר</div>
+                                <div style="color: #666; font-size: 16px;">טיסות רגע אחרון חדשות</div>
                             </div>
                             <div style="text-align: center;">
                                 <div style="font-size: 24px; font-weight: bold; color: #4caf50;">
                                     {stats.get('total_flights_tracked', 0)}
                                 </div>
-                                <div style="color: #666; font-size: 14px;">סה\"כ טיסות</div>
+                                <div style="color: #666; font-size: 14px;">סה"כ טיסות במעקב</div>
                             </div>
+                        </div>
+                        <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 5px;">
+                            <div style="color: #856404; font-weight: bold;">⚡ טיסות רגע אחרון - מחירים קבועים</div>
+                            <div style="color: #856404; font-size: 14px;">המערכת מתמקדת בזיהוי טיסות חדשות לימים הקרובים</div>
                         </div>
                     </div>
         """
@@ -219,14 +182,10 @@ class EmailSender:
         
         # הוספת טיסות חדשות
         if new_flights:
-            html += self.create_flights_html(new_flights, "🆕 טיסות חדשות")
-        
-        # הוספת שינויי מחירים
-        if price_changes:
-            html += self.create_price_changes_html(price_changes)
+            html += self.create_flights_html(new_flights, "🆕 טיסות רגע אחרון שנוספו")
         
         # אם אין עדכונים
-        if not new_flights and not price_changes:
+        if not new_flights:
             html += """
                     <div style="
                         text-align: center; 
@@ -237,8 +196,8 @@ class EmailSender:
                         margin: 20px 0;
                     ">
                         <div style="font-size: 48px; margin-bottom: 15px;">😴</div>
-                        <h3 style="color: #495057;">אין עדכונים חדשים</h3>
-                        <p>לא נמצאו טיסות חדשות או שינויי מחיר מהבדיקה האחרונה.</p>
+                        <h3 style="color: #495057;">אין טיסות חדשות</h3>
+                        <p>לא נמצאו טיסות רגע אחרון חדשות מהבדיקה האחרונה.</p>
                     </div>
             """
         
@@ -252,13 +211,16 @@ class EmailSender:
                                 color: #667eea; 
                                 text-decoration: none; 
                                 font-weight: bold;
-                            ">🌐 בקר באתר TusTus</a>
+                            ">🌐 עבור לאתר TusTus</a>
+                        </p>
+                        <p style="margin: 10px 0;">
+                            💡 <strong>טיפ:</strong> טיסות רגע אחרון משתנות מהר - מומלץ לבדוק מיד!
                         </p>
                         <p style="margin: 5px 0;">
-                            המערכת בודקת עדכונים באופן אוטומטי כל 30 דקות
+                            המערכת בודקה טיסות חדשות כל שעה
                         </p>
                         <p style="margin: 5px 0; font-size: 12px;">
-                            נוצר על ידי מערכת ניטור טיסות אוטומטית
+                            מערכת ניטור טיסות רגע אחרון אוטומטית
                         </p>
                     </div>
                 </div>
@@ -270,7 +232,7 @@ class EmailSender:
         return html
     
     def send_update_email(self, new_flights: List[Dict], price_changes: List[Dict], stats: Dict) -> bool:
-        """שליחת מייל עדכון"""
+        """שליחת מייל עדכון - מותאם לטיסות רגע אחרון"""
         if not self.mailing_list:
             logging.warning("רשימת תפוצה ריקה")
             return False
@@ -280,17 +242,16 @@ class EmailSender:
             return False
         
         try:
-            # קביעת נושא המייל
-            if new_flights and price_changes:
-                subject = f"🔥 {len(new_flights)} טיסות חדשות ו-{len(price_changes)} ירידות מחיר!"
-            elif new_flights:
-                subject = f"✈️ {len(new_flights)} טיסות חדשות נמצאו!"
-            elif price_changes:
-                subject = f"💰 {len(price_changes)} ירידות מחיר מעולות!"
+            # קביעת נושא המייל - התמקדות בטיסות חדשות
+            if new_flights:
+                if len(new_flights) == 1:
+                    dest = new_flights[0].get('destination', 'יעד לא ידוע')
+                    subject = f"🆕 טיסת רגע אחרון חדשה ל{dest}!"
+                else:
+                    subject = f"🆕 {len(new_flights)} טיסות רגע אחרון חדשות!"
             else:
-                subject = "📊 עדכון שגרתי - אין שינויים"
-                # אם אין עדכונים, לא שולחים מייל
-                logging.info("אין עדכונים לשליחה")
+                # אם אין טיסות חדשות, לא שולחים מייל
+                logging.info("אין טיסות חדשות לשליחה")
                 return True
             
             # יצירת HTML
@@ -321,42 +282,40 @@ class EmailSender:
             return False
     
     def test_email(self) -> bool:
-        """שליחת מייל בדיקה"""
+        """שליחת מייל בדיקה - מותאם לטיסות רגע אחרון"""
         test_flights = [
             {
                 'destination': 'ברלין',
-                'price': 599,
-                'dates': ['15/03/2024', '22/03/2024'],
-                'full_text': 'טיסה לברלין במחיר מעולה! כולל מזווה ועוד הטבות.',
+                'price': 'מחיר קבוע',
+                'dates': ['15/08/2024', '16/08/2024'],
+                'full_text': 'טיסת רגע אחרון לברלין! מקומות אחרונים זמינים לימים הקרובים.',
+                'scraped_at': datetime.now().isoformat()
+            },
+            {
+                'destination': 'פריז',
+                'price': 'מחיר קבוע',
+                'dates': ['17/08/2024'],
+                'full_text': 'הזדמנות אחרונה לטיסה לפריז! יציאה מחר.',
                 'scraped_at': datetime.now().isoformat()
             }
         ]
         
-        test_price_changes = [
-            {
-                'destination': 'פריז',
-                'previous_price': 850,
-                'current_price': 650,
-                'discount': 200
-            }
-        ]
-        
         test_stats = {
-            'total_flights_tracked': 25,
+            'total_flights_tracked': 12,
             'last_check': datetime.now().isoformat()
         }
         
-        return self.send_update_email(test_flights, test_price_changes, test_stats)
+        return self.send_update_email(test_flights, [], test_stats)
 
 def test_email_sender():
-    """פונקציה לבדיקת שליחת מייל"""
+    """פונקציה לבדיקת שליחת מייל - מותאמת לטיסות רגע אחרון"""
     sender = EmailSender()
     
     print(f"רשימת תפוצה: {sender.mailing_list}")
     print(f"שרת מייל: {sender.smtp_server}:{sender.smtp_port}")
     
     if sender.username and sender.password:
-        print("שולח מייל בדיקה...")
+        print("שולח מייל בדיקה לטיסות רגע אחרון...")
         success = sender.test_email()
         if success:
             print("✅ מייל בדיקה נשלח בהצלחה!")

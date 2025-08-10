@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Set
 from flight_scraper import FlightScraper
-from config import DATA_FILE
+from config import DATA_FILE, FOCUS_ON_NEW_FLIGHTS_ONLY, IGNORE_PRICE_CHANGES, MAX_FLIGHT_AGE_HOURS
 
 class FlightMonitor:
     def __init__(self):
@@ -42,16 +42,16 @@ class FlightMonitor:
             logging.error(f"שגיאה בשמירת נתונים: {e}")
     
     def create_flight_signature(self, flight: Dict) -> str:
-        """יצירת חתימה ייחודית לטיסה"""
-        # יצירת מזהה ייחודי על בסיס יעד, מחיר וטקסט
+        """יצירת חתימה ייחודית לטיסה על בסיס יעד ותאריכי יציאה"""
         destination = flight.get('destination', '')
-        price = flight.get('price', 0)
-        text_hash = hash(flight.get('full_text', ''))
+        dates = flight.get('dates', [])
         
-        return f"{destination}_{price}_{abs(text_hash)}"
+        # יצירת חתימה על בסיס יעד ותאריכים (לא מחיר כי הוא קבוע)
+        dates_str = '_'.join(sorted(dates)) if dates else 'no_dates'
+        return f"{destination}_{dates_str}_{hash(flight.get('full_text', ''))}"
     
     def find_new_flights(self, current_flights: List[Dict]) -> List[Dict]:
-        """זיהוי טיסות חדשות"""
+        """זיהוי טיסות חדשות - זה הפוקוס העיקרי של המערכת"""
         # יצירת סט של חתימות טיסות קודמות
         previous_signatures = set()
         for flight in self.previous_flights.get('flights', []):
@@ -64,79 +64,90 @@ class FlightMonitor:
             signature = self.create_flight_signature(flight)
             if signature not in previous_signatures:
                 new_flights.append(flight)
-                logging.info(f"טיסה חדשה נמצאה: {flight['destination']} - {flight['price']}₪")
+                logging.info(f"טיסה חדשה נמצאה: {flight['destination']} - {flight.get('dates', 'ללא תאריכים')}")
         
         return new_flights
     
     def find_price_changes(self, current_flights: List[Dict]) -> List[Dict]:
-        """זיהוי שינויי מחירים"""
+        """זיהוי שינויי מחירים - מושבת כי המחירים קבועים"""
+        if IGNORE_PRICE_CHANGES:
+            logging.info("מעקב שינויי מחירים מושבת (מחירים קבועים באתר)")
+            return []
+        
+        # הקוד הישן נשאר כאן למקרה שיהיה צורך עתידי
         price_changes = []
-        
-        # יצירת מיפוי של טיסות קודמות לפי יעד
-        previous_by_destination = {}
-        for flight in self.previous_flights.get('flights', []):
-            dest = flight.get('destination')
-            if dest:
-                if dest not in previous_by_destination:
-                    previous_by_destination[dest] = []
-                previous_by_destination[dest].append(flight)
-        
-        # בדיקת שינויי מחירים
-        for current_flight in current_flights:
-            dest = current_flight.get('destination')
-            current_price = current_flight.get('price')
-            
-            if dest in previous_by_destination and current_price:
-                # חיפוש המחיר הנמוך ביותר הקודם ליעד זה
-                previous_prices = [f.get('price') for f in previous_by_destination[dest] if f.get('price')]
-                if previous_prices:
-                    min_previous_price = min(previous_prices)
-                    
-                    # אם המחיר הנוכחי נמוך יותר ב-50 שקל או יותר
-                    if current_price < min_previous_price - 50:
-                        price_change = {
-                            'destination': dest,
-                            'previous_price': min_previous_price,
-                            'current_price': current_price,
-                            'discount': min_previous_price - current_price,
-                            'flight_data': current_flight
-                        }
-                        price_changes.append(price_change)
-                        logging.info(f"ירידת מחיר ל{dest}: {min_previous_price}₪ -> {current_price}₪")
-        
         return price_changes
     
     def filter_relevant_flights(self, flights: List[Dict]) -> List[Dict]:
-        """סינון טיסות רלוונטיות לפי קריטריונים"""
+        """סינון טיסות רלוונטיות - מותאם לטיסות רגע אחרון"""
         relevant_flights = []
         
         for flight in flights:
-            # בדיקת מחיר מקסימלי
-            price = flight.get('price', 0)
-            if price > 2000:  # מחיר מקסימלי 2000 שקל
+            # בדיקה שיש יעד
+            if not flight.get('destination'):
                 continue
             
-            # בדיקה שיש יעד ומחיר
-            if not flight.get('destination') or not price:
-                continue
-            
-            # בדיקת תוקף (לא ישן מדי)
+            # בדיקת תוקף (טיסות לימים הקרובים בלבד)
             scraped_at = flight.get('scraped_at')
             if scraped_at:
                 try:
                     scraped_time = datetime.fromisoformat(scraped_at)
-                    if datetime.now() - scraped_time > timedelta(hours=24):
+                    if datetime.now() - scraped_time > timedelta(hours=MAX_FLIGHT_AGE_HOURS):
                         continue
                 except:
                     pass
+            
+            # סינון טיסות שכבר עברו או רק להיום
+            dates = flight.get('dates', [])
+            if dates:
+                # ניסיון לפרסר תאריכים ולוודא שהם בטווח הרלוונטי
+                is_valid_date_range = self.check_date_validity(dates)
+                if not is_valid_date_range:
+                    continue
             
             relevant_flights.append(flight)
         
         return relevant_flights
     
+    def check_date_validity(self, dates: List[str]) -> bool:
+        """בדיקה שהתאריכים נמצאים בטווח הרלוונטי לטיסות רגע אחרון"""
+        try:
+            today = datetime.now().date()
+            max_date = today + timedelta(days=14)  # טיסות עד 14 ימים קדימה
+            
+            for date_str in dates:
+                # ניסיון לפרסר תאריכים בפורמטים שונים
+                parsed_date = self.parse_date(date_str)
+                if parsed_date and today <= parsed_date <= max_date:
+                    return True
+            
+            return False
+        except:
+            # אם לא ניתן לפרסר, נשאיר את הטיסה
+            return True
+    
+    def parse_date(self, date_str: str) -> datetime.date:
+        """ניסיון לפרסר תאריך מסטרינג"""
+        try:
+            # פורמטים נפוצים
+            formats = [
+                '%d/%m/%Y', '%d.%m.%Y', '%d-%m-%Y',
+                '%d/%m/%y', '%d.%m.%y', '%d-%m-%y'
+            ]
+            
+            for fmt in formats:
+                try:
+                    return datetime.strptime(date_str.strip(), fmt).date()
+                except:
+                    continue
+            
+            return None
+        except:
+            return None
+    
     def check_for_updates(self) -> Dict:
-        """בדיקה עיקרית לעדכונים"""
-        logging.info("מתחיל בדיקת עדכונים")
+        """בדיקה עיקרית לעדכונים - מותאמת לטיסות רגע אחרון"""
+        logging.info("מתחיל בדיקת עדכונים לטיסות רגע אחרון")
         
         scraper = FlightScraper()
         try:
@@ -146,11 +157,13 @@ class FlightMonitor:
             # סינון טיסות רלוונטיות
             relevant_flights = self.filter_relevant_flights(current_flights)
             
-            # זיהוי טיסות חדשות
+            # זיהוי טיסות חדשות (הפוקוס העיקרי)
             new_flights = self.find_new_flights(relevant_flights)
             
-            # זיהוי שינויי מחירים
-            price_changes = self.find_price_changes(relevant_flights)
+            # שינויי מחירים (מושבת)
+            price_changes = []
+            if not IGNORE_PRICE_CHANGES:
+                price_changes = self.find_price_changes(relevant_flights)
             
             # שמירת נתונים
             self.save_flights_data(relevant_flights, new_flights)
@@ -165,10 +178,11 @@ class FlightMonitor:
                 'total_flights': len(relevant_flights),
                 'new_flights': new_flights,
                 'price_changes': price_changes,
-                'check_time': datetime.now().isoformat()
+                'check_time': datetime.now().isoformat(),
+                'focus_message': 'התמקדות בטיסות חדשות לימים הקרובים' if FOCUS_ON_NEW_FLIGHTS_ONLY else ''
             }
             
-            logging.info(f"בדיקה הושלמה: {len(relevant_flights)} טיסות, {len(new_flights)} חדשות, {len(price_changes)} שינויי מחיר")
+            logging.info(f"בדיקה הושלמה: {len(relevant_flights)} טיסות, {len(new_flights)} חדשות")
             return result
             
         except Exception as e:
@@ -189,36 +203,33 @@ class FlightMonitor:
             'total_flights_tracked': len(self.previous_flights.get('flights', [])),
             'last_check': self.previous_flights.get('last_check'),
             'destinations_found': set(),
-            'price_range': {'min': None, 'max': None},
-            'average_price': 0
+            'monitoring_focus': 'טיסות חדשות לימים הקרובים' if FOCUS_ON_NEW_FLIGHTS_ONLY else 'כל השינויים',
+            'price_monitoring': 'מושבת (מחירים קבועים)' if IGNORE_PRICE_CHANGES else 'פעיל',
+            'check_interval': 'כל שעה (מתאים לטיסות רגע אחרון)'
         }
         
         flights = self.previous_flights.get('flights', [])
         if flights:
-            prices = [f.get('price', 0) for f in flights if f.get('price')]
             destinations = [f.get('destination') for f in flights if f.get('destination')]
-            
-            if prices:
-                stats['price_range']['min'] = min(prices)
-                stats['price_range']['max'] = max(prices)
-                stats['average_price'] = sum(prices) / len(prices)
-            
             stats['destinations_found'] = set(destinations)
         
         return stats
 
 def test_monitor():
-    """פונקציה לבדיקת המוניטור"""
+    """פונקציה לבדיקת המוניטור המותאם"""
     monitor = FlightMonitor()
     
     # הצגת סטטיסטיקות נוכחיות
     stats = monitor.get_statistics()
-    print("סטטיסטיקות נוכחיות:")
+    print("סטטיסטיקות מערכת ניטור טיסות רגע אחרון:")
+    print("=" * 55)
     print(f"- טיסות במעקב: {stats['total_flights_tracked']}")
     print(f"- יעדים: {', '.join(stats['destinations_found']) if stats['destinations_found'] else 'אין'}")
-    print(f"- טווח מחירים: {stats['price_range']['min']}-{stats['price_range']['max']}₪")
+    print(f"- פוקוס ניטור: {stats['monitoring_focus']}")
+    print(f"- מעקב מחירים: {stats['price_monitoring']}")
+    print(f"- תדירות בדיקה: {stats['check_interval']}")
     print(f"- בדיקה אחרונה: {stats['last_check']}")
-    print("-" * 50)
+    print("-" * 55)
     
     # בדיקת עדכונים
     result = monitor.check_for_updates()
@@ -226,17 +237,15 @@ def test_monitor():
     print(f"תוצאות בדיקה:")
     print(f"- סה\"כ טיסות: {result['total_flights']}")
     print(f"- טיסות חדשות: {len(result['new_flights'])}")
-    print(f"- שינויי מחיר: {len(result['price_changes'])}")
+    print(f"- {result.get('focus_message', '')}")
     
     if result['new_flights']:
-        print("\nטיסות חדשות:")
+        print("\n🆕 טיסות חדשות שנמצאו:")
         for flight in result['new_flights']:
-            print(f"- {flight['destination']}: {flight['price']}₪")
-    
-    if result['price_changes']:
-        print("\nשינויי מחיר:")
-        for change in result['price_changes']:
-            print(f"- {change['destination']}: {change['previous_price']}₪ -> {change['current_price']}₪ (הנחה: {change['discount']}₪)")
+            dates_str = ', '.join(flight.get('dates', [])) if flight.get('dates') else 'ללא תאריכים'
+            print(f"✈️ {flight['destination']} - {dates_str}")
+    else:
+        print("\n😴 לא נמצאו טיסות חדשות")
 
 if __name__ == "__main__":
     test_monitor()
