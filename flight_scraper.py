@@ -126,22 +126,30 @@ class FlightScraper:
         try:
             text = element.text.strip()
             if not text:
+                logging.debug(f"אלמנט ריק - דילוג")
                 return None
+            
+            logging.debug(f"מעבד אלמנט עם טקסט: {text[:100]}...")
             
             # חיפוש יעד
             destination = self.extract_destination(text, element)
+            logging.debug(f"יעד שנמצא: {destination}")
             
             # דילוג על יעדים מוחרגים
             if destination and any(destination == ex for ex in EXCLUDED_DESTINATIONS):
+                logging.debug(f"יעד {destination} מוחרג - דילוג")
                 return None
             
             # חיפוש מחיר
             price = self.extract_price(text, element)
+            logging.debug(f"מחיר שנמצא: {price}")
             
             # חיפוש תאריכים
             dates = self.extract_dates(text, element)
+            logging.debug(f"תאריכים שנמצאו: {dates}")
             
             if destination and price:
+                logging.info(f"✅ טיסה נמצאה: {destination} - {price}₪")
                 return {
                     'destination': destination,
                     'price': price,
@@ -150,6 +158,9 @@ class FlightScraper:
                     'scraped_at': datetime.now().isoformat(),
                     'url': TUSTUS_URL
                 }
+            else:
+                logging.debug(f"❌ אלמנט לא עבר סינון: יעד={destination}, מחיר={price}")
+                
         except Exception as e:
             logging.warning(f"שגיאה בחילוץ נתונים מאלמנט: {e}")
         
@@ -160,14 +171,17 @@ class FlightScraper:
         # חיפוש יעדים מהרשימה המועדפת
         for dest in PREFERRED_DESTINATIONS:
             if dest in text:
+                logging.debug(f"יעד נמצא ברשימה המועדפת: {dest}")
                 return dest
         
         # חיפוש מילות מפתח נוספות לערים
         cities_keywords = ['ברלין', 'פריז', 'לונדון', 'רומא', 'מדריד', 'אמסטרדם', 'פראג', 'ויאנה', 'ברצלונה', 'מילאנו', 'ניס', 'ליסבון']
         for city in cities_keywords:
             if city in text:
+                logging.debug(f"יעד נמצא במילות מפתח: {city}")
                 return city
         
+        logging.debug(f"לא נמצא יעד בטקסט: {text[:50]}...")
         return None
     
     def extract_price(self, text, element):
