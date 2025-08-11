@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Set
 from flight_scraper import FlightScraper
+from simple_scraper import SimpleFlightScraper
 from config import DATA_FILE, FOCUS_ON_NEW_FLIGHTS_ONLY, IGNORE_PRICE_CHANGES, MAX_FLIGHT_AGE_HOURS
 
 class FlightMonitor:
@@ -149,10 +150,26 @@ class FlightMonitor:
         """בדיקה עיקרית לעדכונים - מותאמת לטיסות רגע אחרון"""
         logging.info("מתחיל בדיקת עדכונים לטיסות רגע אחרון")
         
-        scraper = FlightScraper()
+        # ניסיון ראשון עם Selenium
+        scraper = None
+        current_flights = []
+        
         try:
-            # סריקת טיסות נוכחיות
+            scraper = FlightScraper()
             current_flights = scraper.scrape_flights()
+        except Exception as selenium_error:
+            logging.warning(f"Selenium נכשל: {selenium_error}")
+            logging.info("מנסה סקרפר פשוט כ-fallback...")
+            
+            try:
+                simple_scraper = SimpleFlightScraper()
+                current_flights = simple_scraper.scrape_flights()
+                logging.info("הצלחה עם סקרפר פשוט")
+            except Exception as simple_error:
+                logging.error(f"גם הסקרפר הפשוט נכשל: {simple_error}")
+                current_flights = []
+        
+        try:
             
             # סינון טיסות רלוונטיות
             relevant_flights = self.filter_relevant_flights(current_flights)
@@ -195,7 +212,8 @@ class FlightMonitor:
                 'check_time': datetime.now().isoformat()
             }
         finally:
-            scraper.close()
+            if scraper:
+                scraper.close()
     
     def get_statistics(self) -> Dict:
         """קבלת סטטיסטיקות"""

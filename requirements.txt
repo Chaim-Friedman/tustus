@@ -6,3 +6,4 @@ schedule==1.2.0
 python-dotenv==1.0.0
 lxml>=4.9.4
 pandas>=2.1.0
+chromedriver-binary-auto

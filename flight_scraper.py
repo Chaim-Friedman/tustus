@@ -10,6 +10,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 import time
 import json
 import logging
+import platform
+import os
 from datetime import datetime
 from config import TUSTUS_URL, PREFERRED_DESTINATIONS
 
@@ -29,7 +31,7 @@ class FlightScraper:
         self.setup_driver()
     
     def setup_driver(self):
-        """הגדרת WebDriver עם Chrome"""
+        """הגדרת WebDriver עם Chrome - מותאם לWindows"""
         try:
             chrome_options = Options()
             chrome_options.add_argument('--headless')  # ריצה ברקע
@@ -38,10 +40,102 @@ class FlightScraper:
             chrome_options.add_argument('--disable-gpu')
             chrome_options.add_argument('--window-size=1920,1080')
             chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+            chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
             
-            service = Service(ChromeDriverManager().install())
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
-            logging.info("WebDriver הוגדר בהצלחה")
+            # זיהוי מערכת הפעלה
+            system = platform.system().lower()
+            logging.info(f"מערכת הפעלה זוהתה: {system}")
+            
+            try:
+                # ניסיון ראשון: ChromeDriverManager עם התאמה למערכת
+                if system == "windows":
+                    # עבור Windows - נסה לכפות 64-bit
+                    os.environ['WDM_ARCH'] = 'win64'
+                    logging.info("מגדיר WDM_ARCH=win64 עבור Windows")
+                
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                
+            except Exception as e:
+                logging.warning(f"ChromeDriverManager נכשל: {e}")
+                logging.info("מנסה פתרונות חלופיים...")
+                
+                # ניסיון שני: מחיקת cache ונסיון נוסף
+                try:
+                    import shutil
+                    wdm_cache = os.path.expanduser("~/.wdm")
+                    if os.path.exists(wdm_cache):
+                        shutil.rmtree(wdm_cache)
+                        logging.info("נוקה cache של WebDriverManager")
+                    
+                    # נסיון חוזר עם cache נקיה
+                    service = Service(ChromeDriverManager().install())
+                    self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                    
+                except Exception as e2:
+                    logging.warning(f"ניסיון שני נכשל: {e2}")
+                    
+                    # ניסיון שלישי: Chrome מותקן במערכת
+                    try:
+                        logging.info("מנסה להשתמש ב-Chrome ללא WebDriverManager...")
+                        
+                        # נתיבים אפשריים של Chrome ב-Windows
+                        chrome_paths = [
+                            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                            r"C:\Users\{}\AppData\Local\Google\Chrome\Application\chrome.exe".format(os.getenv('USERNAME', '')),
+                        ]
+                        
+                        chrome_path = None
+                        for path in chrome_paths:
+                            if os.path.exists(path):
+                                chrome_path = path
+                                break
+                        
+                        if chrome_path:
+                            chrome_options.binary_location = chrome_path
+                            logging.info(f"נמצא Chrome ב: {chrome_path}")
+                            
+                            # ניסיון עם chromedriver-binary
+                            try:
+                                import chromedriver_binary
+                                self.driver = webdriver.Chrome(options=chrome_options)
+                                logging.info("הצלחה עם chromedriver-binary")
+                            except ImportError:
+                                # התקנת chromedriver-binary אם לא קיים
+                                logging.info("מתקין chromedriver-binary...")
+                                os.system("pip install chromedriver-binary-auto")
+                                import chromedriver_binary
+                                self.driver = webdriver.Chrome(options=chrome_options)
+                        else:
+                            raise Exception("Chrome לא נמצא במערכת")
+                    
+                    except Exception as e3:
+                        logging.error(f"כל הניסיונות נכשלו: {e3}")
+                        # ניסיון אחרון עם Firefox
+                        try:
+                            logging.info("מנסה Firefox כחלופה...")
+                            from selenium.webdriver.firefox.options import Options as FirefoxOptions
+                            from selenium.webdriver.firefox.service import Service as FirefoxService
+                            from webdriver_manager.firefox import GeckoDriverManager
+                            
+                            firefox_options = FirefoxOptions()
+                            firefox_options.add_argument('--headless')
+                            service = FirefoxService(GeckoDriverManager().install())
+                            self.driver = webdriver.Firefox(service=service, options=firefox_options)
+                            logging.info("הצלחה עם Firefox")
+                            
+                        except Exception as e4:
+                            logging.error(f"גם Firefox נכשל: {e4}")
+                            raise Exception("לא ניתן להגדיר browser. אנא התקן Chrome או Firefox")
+            
+            # הוספת הגדרות נוספות לאחר יצירת הדרייבר
+            if self.driver:
+                self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                logging.info("WebDriver הוגדר בהצלחה")
+                
         except Exception as e:
             logging.error(f"שגיאה בהגדרת WebDriver: {e}")
             raise

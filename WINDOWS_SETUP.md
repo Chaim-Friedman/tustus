@@ -89,6 +89,18 @@ venv\Scripts\activate.bat
 pip install -r requirements.txt
 ```
 
+### בעיה: "[WinError 193] %1 is not a valid Win32 application"
+**פתרון:**
+```cmd
+fix_windows_chrome.bat
+```
+או באופן ידני:
+```cmd
+rmdir /s /q "%USERPROFILE%\.wdm"
+set WDM_ARCH=win64
+pip install chromedriver-binary-auto
+```
+
 ### בעיה: Python לא מוכר
 **פתרון:**
 1. התקן Python מ: https://python.org
