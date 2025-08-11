@@ -35,7 +35,7 @@ PREFERRED_DESTINATIONS = [
     'הודו',
     'ניו יורק',
     'מיאמי',
-    'לוס אנג\'לס',
+    "לוס אנג'לס",
     'איסטנבול',
     'בודפשט',
     'מילאנו',
@@ -44,6 +44,9 @@ PREFERRED_DESTINATIONS = [
     'זאגרב',
     'בלגרד'
 ]
+
+# רשימת יעדים לא רלוונטיים (יוצאים מההתראה)
+EXCLUDED_DESTINATIONS = [d.strip() for d in os.getenv('EXCLUDED_DESTINATIONS', '').split(',') if d.strip()]
 
 # הגדרות נוספות
 DATA_FILE = 'flights_data.json'

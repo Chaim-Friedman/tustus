@@ -10,7 +10,7 @@ import time
 import json
 import logging
 from datetime import datetime
-from config import TUSTUS_URL, PREFERRED_DESTINATIONS
+from config import TUSTUS_URL, PREFERRED_DESTINATIONS, EXCLUDED_DESTINATIONS
 
 class SimpleFlightScraper:
     def __init__(self):
@@ -61,6 +61,9 @@ class SimpleFlightScraper:
             
             # הסרת כפילויות
             unique_flights = self.remove_duplicates(flights)
+
+            # סינון יעדים מוחרגים
+            unique_flights = [f for f in unique_flights if f.get('destination') not in EXCLUDED_DESTINATIONS]
             
             logging.info(f"נמצאו {len(unique_flights)} טיסות רלוונטיות (סקרפר פשוט)")
             return unique_flights
@@ -116,6 +119,10 @@ class SimpleFlightScraper:
                     break
             
             if not destination:
+                return None
+
+            # דילוג על יעדים מוחרגים
+            if destination in EXCLUDED_DESTINATIONS:
                 return None
             
             # חיפוש מחיר

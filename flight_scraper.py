@@ -9,7 +9,7 @@ import time
 import json
 import logging
 from datetime import datetime
-from config import TUSTUS_URL, PREFERRED_DESTINATIONS
+from config import TUSTUS_URL, PREFERRED_DESTINATIONS, EXCLUDED_DESTINATIONS
 
 # הגדרת לוגים
 logging.basicConfig(
@@ -131,6 +131,10 @@ class FlightScraper:
             # חיפוש יעד
             destination = self.extract_destination(text, element)
             
+            # דילוג על יעדים מוחרגים
+            if destination and any(destination == ex for ex in EXCLUDED_DESTINATIONS):
+                return None
+            
             # חיפוש מחיר
             price = self.extract_price(text, element)
             
@@ -212,6 +216,9 @@ class FlightScraper:
     def is_relevant_destination(self, destination):
         """בדיקה אם היעד רלוונטי"""
         if not destination:
+            return False
+        # אם הוגדר החרגה - לא רלוונטי
+        if any(destination == ex for ex in EXCLUDED_DESTINATIONS):
             return False
         return destination in PREFERRED_DESTINATIONS
     
