@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Set
 from flight_scraper import FlightScraper
 from simple_scraper import SimpleFlightScraper
-=======
 from config import DATA_FILE, FOCUS_ON_NEW_FLIGHTS_ONLY, IGNORE_PRICE_CHANGES, MAX_FLIGHT_AGE_HOURS
 
 class FlightMonitor:
@@ -150,53 +149,32 @@ class FlightMonitor:
     def check_for_updates(self) -> Dict:
         """בדיקה עיקרית לעדכונים - מותאמת לטיסות רגע אחרון"""
         logging.info("מתחיל בדיקת עדכונים לטיסות רגע אחרון")
-        
-        # ניסיון ראשון עם Selenium
-        scraper = None
-        current_flights = []
-        
-        try:
-            scraper = FlightScraper()
-            current_flights = scraper.scrape_flights()
-        except Exception as selenium_error:
-            logging.warning(f"Selenium נכשל: {selenium_error}")
-            logging.info("מנסה סקרפר פשוט כ-fallback...")
-            
-            try:
-                simple_scraper = SimpleFlightScraper()
-                current_flights = simple_scraper.scrape_flights()
-                logging.info("הצלחה עם סקרפר פשוט")
-            except Exception as simple_error:
-                logging.error(f"גם הסקרפר הפשוט נכשל: {simple_error}")
-                current_flights = []
-        
-        try:
-=======
+
         scraper = FlightScraper()
         try:
             # סריקת טיסות נוכחיות
             current_flights = scraper.scrape_flights()
-            
+
             # סינון טיסות רלוונטיות
             relevant_flights = self.filter_relevant_flights(current_flights)
-            
+
             # זיהוי טיסות חדשות (הפוקוס העיקרי)
             new_flights = self.find_new_flights(relevant_flights)
-            
+
             # שינויי מחירים (מושבת)
             price_changes = []
             if not IGNORE_PRICE_CHANGES:
                 price_changes = self.find_price_changes(relevant_flights)
-            
+
             # שמירת נתונים
             self.save_flights_data(relevant_flights, new_flights)
-            
+
             # עדכון נתונים פנימיים
             self.previous_flights = {
                 'flights': relevant_flights,
                 'last_check': datetime.now().isoformat()
             }
-            
+
             result = {
                 'total_flights': len(relevant_flights),
                 'new_flights': new_flights,
@@ -204,10 +182,10 @@ class FlightMonitor:
                 'check_time': datetime.now().isoformat(),
                 'focus_message': 'התמקדות בטיסות חדשות לימים הקרובים' if FOCUS_ON_NEW_FLIGHTS_ONLY else ''
             }
-            
+
             logging.info(f"בדיקה הושלמה: {len(relevant_flights)} טיסות, {len(new_flights)} חדשות")
             return result
-            
+
         except Exception as e:
             logging.error(f"שגיאה בבדיקת עדכונים: {e}")
             return {
@@ -220,8 +198,6 @@ class FlightMonitor:
         finally:
             if scraper:
                 scraper.close()
-=======
-            scraper.close()
     
     def get_statistics(self) -> Dict:
         """קבלת סטטיסטיקות"""
