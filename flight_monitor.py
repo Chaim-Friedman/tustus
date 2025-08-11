@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Set
 from flight_scraper import FlightScraper
 from simple_scraper import SimpleFlightScraper
+=======
 from config import DATA_FILE, FOCUS_ON_NEW_FLIGHTS_ONLY, IGNORE_PRICE_CHANGES, MAX_FLIGHT_AGE_HOURS
 
 class FlightMonitor:
@@ -170,6 +171,11 @@ class FlightMonitor:
                 current_flights = []
         
         try:
+=======
+        scraper = FlightScraper()
+        try:
+            # סריקת טיסות נוכחיות
+            current_flights = scraper.scrape_flights()
             
             # סינון טיסות רלוונטיות
             relevant_flights = self.filter_relevant_flights(current_flights)
@@ -214,6 +220,8 @@ class FlightMonitor:
         finally:
             if scraper:
                 scraper.close()
+=======
+            scraper.close()
     
     def get_statistics(self) -> Dict:
         """קבלת סטטיסטיקות"""

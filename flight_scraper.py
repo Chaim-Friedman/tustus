@@ -12,6 +12,7 @@ import json
 import logging
 import platform
 import os
+=======
 from datetime import datetime
 from config import TUSTUS_URL, PREFERRED_DESTINATIONS
 
@@ -32,6 +33,8 @@ class FlightScraper:
     
     def setup_driver(self):
         """הגדרת WebDriver עם Chrome - מותאם לWindows"""
+=======
+        """הגדרת WebDriver עם Chrome"""
         try:
             chrome_options = Options()
             chrome_options.add_argument('--headless')  # ריצה ברקע
@@ -136,6 +139,11 @@ class FlightScraper:
                 self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
                 logging.info("WebDriver הוגדר בהצלחה")
                 
+=======
+            
+            service = Service(ChromeDriverManager().install())
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            logging.info("WebDriver הוגדר בהצלחה")
         except Exception as e:
             logging.error(f"שגיאה בהגדרת WebDriver: {e}")
             raise
