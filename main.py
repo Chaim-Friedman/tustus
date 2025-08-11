@@ -51,6 +51,18 @@ class FlightAlertSystem:
             new_flights = result.get('new_flights', [])
             price_changes = result.get('price_changes', [])
             
+            # סינון בטיחות נוסף ליעדים מוחרגים (כפול בטחון)
+            try:
+                from config import EXCLUDED_DESTINATIONS
+                before_count = len(new_flights)
+                if EXCLUDED_DESTINATIONS:
+                    new_flights = [f for f in new_flights if f.get('destination') not in EXCLUDED_DESTINATIONS]
+                    excluded_count = before_count - len(new_flights)
+                    if excluded_count > 0:
+                        logging.info(f"סוננו {excluded_count} טיסות על פי רשימת היעדים המוחרגים: {EXCLUDED_DESTINATIONS}")
+            except Exception as e:
+                logging.warning(f"נכשל סינון יעדים מוחרגים בשכבת ההתראות: {e}")
+            
             # שליחת מייל רק אם יש טיסות חדשות (כי המחירים קבועים)
             if new_flights:
                 logging.info(f"נמצאו {len(new_flights)} טיסות רגע אחרון חדשות")

@@ -150,7 +150,14 @@ class FlightMonitor:
         """בדיקה עיקרית לעדכונים - מותאמת לטיסות רגע אחרון"""
         logging.info("מתחיל בדיקת עדכונים לטיסות רגע אחרון")
 
-        scraper = FlightScraper()
+        # ניסיון להשתמש בסקרפר הראשי; נפילה תגרור מעבר לסקרפר פשוט
+        scraper = None
+        try:
+            scraper = FlightScraper()
+        except Exception as e:
+            logging.warning(f"נכשלה אתחול Selenium Chrome, עובר לסקרפר פשוט: {e}")
+            scraper = SimpleFlightScraper()
+        
         try:
             # סריקת טיסות נוכחיות
             current_flights = scraper.scrape_flights()
@@ -196,8 +203,11 @@ class FlightMonitor:
                 'check_time': datetime.now().isoformat()
             }
         finally:
-            if scraper:
-                scraper.close()
+            try:
+                if scraper and hasattr(scraper, 'close'):
+                    scraper.close()
+            except Exception:
+                pass
     
     def get_statistics(self) -> Dict:
         """קבלת סטטיסטיקות"""
