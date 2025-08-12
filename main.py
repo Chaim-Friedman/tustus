@@ -9,17 +9,19 @@ import sys
 from datetime import datetime
 from flight_monitor import FlightMonitor
 from email_sender import EmailSender
-from config import CHECK_INTERVAL_MINUTES, FOCUS_ON_NEW_FLIGHTS_ONLY, IGNORE_PRICE_CHANGES
+from config import CHECK_INTERVAL_MINUTES, FOCUS_ON_NEW_FLIGHTS_ONLY, IGNORE_PRICE_CHANGES, LOG_LEVEL
 
 # הגדרת לוגים
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('flight_monitor.log', encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
+# ודאו שרמת הלוג חלה על הלוגר הראשי
+logging.getLogger().setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
 
 class FlightAlertSystem:
     def __init__(self):

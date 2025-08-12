@@ -48,6 +48,12 @@ PREFERRED_DESTINATIONS = [
 # רשימת יעדים לא רלוונטיים (יוצאים מההתראה)
 EXCLUDED_DESTINATIONS = [d.strip() for d in os.getenv('EXCLUDED_DESTINATIONS', '').split(',') if d.strip()]
 
+# רמת לוגים
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
+
+# סינון יעדים: אם True נתריע רק על יעדים מועדפים (למעט מוחרגים). אם False נתריע על כל יעד שאינו מוחרג.
+FILTER_ONLY_PREFERRED = os.getenv('FILTER_ONLY_PREFERRED', 'false').lower() in ('1', 'true', 'yes', 'on')
+
 # הגדרות נוספות
 DATA_FILE = 'flights_data.json'
 LOG_FILE = 'flight_monitor.log'

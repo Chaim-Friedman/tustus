@@ -5,7 +5,10 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Set
 from flight_scraper import FlightScraper
 from simple_scraper import SimpleFlightScraper
-from config import DATA_FILE, FOCUS_ON_NEW_FLIGHTS_ONLY, IGNORE_PRICE_CHANGES, MAX_FLIGHT_AGE_HOURS
+from config import DATA_FILE, FOCUS_ON_NEW_FLIGHTS_ONLY, IGNORE_PRICE_CHANGES, MAX_FLIGHT_AGE_HOURS, LOG_LEVEL
+
+# הגדרת לוגים לפי רמת קונפיג
+logging.getLogger().setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
 
 class FlightMonitor:
     def __init__(self):
@@ -157,6 +160,11 @@ class FlightMonitor:
 
             # סינון טיסות רלוונטיות
             relevant_flights = self.filter_relevant_flights(current_flights)
+
+            if not current_flights:
+                logging.info("לא נמצאו טיסות מתוך הסקרפר לפני סינון. בדקו סלקטורים/טעינת דף.")
+            if current_flights and not relevant_flights:
+                logging.info("נמצאו טיסות אך סוננו כולן כלא רלוונטיות (תאריכים/גיל/חוסר יעד)")
 
             # זיהוי טיסות חדשות (הפוקוס העיקרי)
             new_flights = self.find_new_flights(relevant_flights)
