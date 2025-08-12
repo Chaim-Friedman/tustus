@@ -157,6 +157,12 @@ class FlightScraper:
                 if fallback_flights:
                     return fallback_flights
 
+                # ניסיון אינטראקטיבי: הקלקה על אלמנטים/כרטיסים כדי לחשוף טקסט ואז חילוץ
+                interactive = self._try_click_expand_and_extract(limit_clicks=12)
+                logging.info(f"Interactive: נמצאו {len(interactive)} טיסות לאחר הקלקות/הרחבות")
+                if interactive:
+                    return interactive
+
                 # ניסיון נוסף: פרסינג של HTML מלא
                 html = self.driver.page_source
                 html_flights = self.extract_from_html(html)
@@ -700,6 +706,77 @@ class FlightScraper:
                     continue
         except Exception:
             pass
+
+    def _try_close_modals(self):
+        """ניסיון לסגור דיאלוגים/מודלים אחרי הקלקות"""
+        try:
+            xpaths = [
+                "//button[contains(., 'סגור') or contains(., 'Close') or contains(., 'X')]",
+                "//div[contains(@class,'close') or contains(@class,'modal-close')]",
+            ]
+            for xp in xpaths:
+                try:
+                    for el in self.driver.find_elements(By.XPATH, xp)[:3]:
+                        try:
+                            self.driver.execute_script("arguments[0].click();", el)
+                            time.sleep(0.3)
+                        except Exception:
+                            continue
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    def _try_click_expand_and_extract(self, limit_clicks: int = 12):
+        """ניסיונות הקלקה על כרטיסים/אלמנטים כדי לחשוף טקסט, ואז חילוץ מטקסט העמוד."""
+        results = []
+        try:
+            # בחר אלמנטים מועמדים להקלקה
+            candidates = []
+            for sel in ["[class*='flight']", "[class*='item']", "[class*='result']", "a", "button"]:
+                try:
+                    elems = self.driver.find_elements(By.CSS_SELECTOR, sel)
+                    candidates.extend(elems[:50])
+                except Exception:
+                    continue
+            # הסר כפילויות
+            seen = set()
+            dedup = []
+            for el in candidates:
+                try:
+                    el_id = el.id
+                except Exception:
+                    el_id = id(el)
+                if el_id in seen:
+                    continue
+                seen.add(el_id)
+                dedup.append(el)
+
+            clicks = 0
+            for el in dedup:
+                if clicks >= limit_clicks:
+                    break
+                try:
+                    self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+                    time.sleep(0.2)
+                    self.driver.execute_script("try{arguments[0].click();}catch(e){}", el)
+                    clicks += 1
+                    time.sleep(1.0)
+                    # אחרי הקלקה: נסה חילוץ מטקסט הדף
+                    page_text = self.driver.execute_script("return document.body.innerText || document.body.textContent || '';") or ""
+                    extracted = self.extract_from_page_text(page_text)
+                    # הוסף רק חדשים
+                    for f in extracted:
+                        key = (f['destination'], f.get('full_text'))
+                        if key not in {(r['destination'], r.get('full_text')) for r in results}:
+                            results.append(f)
+                    # נסה לסגור מודלים כדי להמשיך
+                    self._try_close_modals()
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return results
 
 def test_scraper():
     """פונקציה לבדיקת הסקרפר"""
