@@ -97,7 +97,19 @@ class FlightScraper:
                     logging.info(f"טיסה לא רלוונטית לפי סינון: {flight_data.get('destination')} - מוחרג/לא מועדף")
             
             logging.info(f"נמצאו {len(flights)} טיסות רלוונטיות")
-            return flights
+            if flights:
+                return flights
+
+            # fallback: סריקה על טקסט מלא של העמוד, ללא דרישת מחיר
+            logging.info("לא נמצאו טיסות מתוך אלמנטים. מבצע סריקה מטקסט העמוד כחלופה.")
+            try:
+                page_text = self.driver.execute_script("return document.body.innerText || document.body.textContent || '';") or ""
+                fallback_flights = self.extract_from_page_text(page_text)
+                logging.info(f"Fallback: נמצאו {len(fallback_flights)} טיסות מטקסט העמוד")
+                return fallback_flights
+            except Exception as e:
+                logging.warning(f"Fallback נכשל: {e}")
+                return []
             
         except Exception as e:
             logging.error(f"שגיאה בסריקת טיסות: {e}")
@@ -154,6 +166,42 @@ class FlightScraper:
                 pass
         
         return flight_elements
+
+    def extract_from_page_text(self, page_text: str):
+        """Fallback: חילוץ טיסות מתוך טקסט מלא של הדף, ללא דרישת מחיר"""
+        results = []
+        if not page_text:
+            return results
+        text = page_text
+        # יעד יכול להופיע בעברית או אנגלית
+        extra_cities = [
+            'Berlin', 'Paris', 'London', 'Rome', 'Madrid', 'Amsterdam', 'Prague', 'Vienna', 'Barcelona', 'Milan', 'Nice', 'Lisbon',
+            'Athens', 'Istanbul', 'Budapest', 'Zagreb', 'Belgrade', 'Dubai', 'New York', 'Miami', 'Los Angeles'
+        ]
+        candidates = list(dict.fromkeys(PREFERRED_DESTINATIONS + extra_cities))
+        seen = set()
+        for dest in candidates:
+            try:
+                if not dest:
+                    continue
+                if dest in EXCLUDED_DESTINATIONS:
+                    continue
+                if dest in text:
+                    key = dest
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    results.append({
+                        'destination': dest,
+                        'price': None,
+                        'dates': None,
+                        'full_text': f'זוהה יעד בטקסט העמוד: {dest}',
+                        'scraped_at': datetime.now().isoformat(),
+                        'url': TUSTUS_URL
+                    })
+            except Exception:
+                continue
+        return results
     
     def extract_flight_data(self, element):
         """חילוץ נתונים מאלמנט טיסה"""
@@ -200,8 +248,11 @@ class FlightScraper:
             dates = self.extract_dates(text, element)
             logging.debug(f"תאריכים שנמצאו: {dates}")
             
-            if destination and price:
-                logging.info(f"✅ טיסה נמצאה: {destination} - {price}₪")
+            if destination:
+                if price is not None:
+                    logging.info(f"✅ טיסה נמצאה: {destination} - {price}₪")
+                else:
+                    logging.info(f"✅ טיסה נמצאה ללא מחיר: {destination}")
                 return {
                     'destination': destination,
                     'price': price,
@@ -227,7 +278,12 @@ class FlightScraper:
                 return dest
         
         # חיפוש מילות מפתח נוספות לערים
-        cities_keywords = ['ברלין', 'פריז', 'לונדון', 'רומא', 'מדריד', 'אמסטרדם', 'פראג', 'ויאנה', 'ברצלונה', 'מילאנו', 'ניס', 'ליסבון']
+        cities_keywords = [
+            'ברלין', 'פריז', 'לונדון', 'רומא', 'מדריד', 'אמסטרדם', 'פראג', 'ויאנה', 'ברצלונה', 'מילאנו', 'ניס', 'ליסבון',
+            # אנגלית
+            'Berlin', 'Paris', 'London', 'Rome', 'Madrid', 'Amsterdam', 'Prague', 'Vienna', 'Barcelona', 'Milan', 'Nice', 'Lisbon',
+            'Athens', 'Istanbul', 'Budapest', 'Zagreb', 'Belgrade'
+        ]
         for city in cities_keywords:
             if city in text:
                 logging.debug(f"יעד נמצא במילות מפתח: {city}")
@@ -241,22 +297,26 @@ class FlightScraper:
         import re
         
         # חיפוש מחירים בפורמטים שונים
+        # מספרים עם מפרידי אלפים (2-4 ספרות או 1-3 עם מפרידים 3 ספרות)
+        num = r'(\d{1,3}(?:[.,\u00A0]\d{3})+|\d{2,4})'
         price_patterns = [
-            r'(\d{1,4})\s*₪',
-            r'(\d{1,4})\s*שח',
-            r'₪\s*(\d{1,4})',
-            r'שח\s*(\d{1,4})',
-            r'(\d{1,4})\s*שקל',
-            r'מ\s*(\d{1,4})',
-            r'החל\s*מ\s*(\d{1,4})'
+            rf'{num}\s*₪',
+            rf'{num}\s*שח',
+            rf'₪\s*{num}',
+            rf'שח\s*{num}',
+            rf'{num}\s*שקל',
+            rf'מ\s*{num}',
+            rf'החל\s*מ\s*{num}'
         ]
         
         for pattern in price_patterns:
             match = re.search(pattern, text)
             if match:
                 try:
-                    return int(match.group(1))
-                except:
+                    numeric = match.group(1)
+                    numeric = numeric.replace(',', '').replace('.', '').replace('\u00A0', '')
+                    return int(numeric)
+                except Exception:
                     continue
         
         return None
